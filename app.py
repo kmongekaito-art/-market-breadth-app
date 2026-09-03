@@ -17,7 +17,7 @@ st.set_page_config(page_title="Market Breadth Analyzer", layout="wide")
 with st.sidebar:
     st.title("⚙️ Configuración")
     st.markdown("### Selección de Índice")
-    ticker = st.selectbox("Mercado a analizar:", ["SPY", "QQQ"], index=0)
+    ticker = st.selectbox("Mercado a analizar:", ["SPY", "QQQ","XESC.DE"], index=0)
     
     st.markdown("---")
     st.info("💡 *Los datos se cargan en caché. El primer cambio de ticker tardará unos segundos.*")
@@ -25,7 +25,8 @@ with st.sidebar:
 # Diccionario de URLs de BlackRock según el ticker
 BLACKROCK_URLS = {
     'SPY': 'https://www.blackrock.com/es/profesionales/productos/253743/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
-    'QQQ': 'https://www.blackrock.com/es/profesionales/productos/251896/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205'
+    'QQQ': 'https://www.blackrock.com/es/profesionales/productos/251896/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
+    'XESC.DE': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
 }
 
 # ==========================================
@@ -145,7 +146,7 @@ with col_controls:
     selected_indicators = []
     for i in range(num_panels):
         # Asignamos defaults lógicos: Panel 1 -> MIMACD, Panel 2 -> NHNL, Panel 3 -> ADn
-        default_options = ['MIMACD + Señal (Corto)', 'New Highs + New Lows', 'ADn + McClellan (Medio)']
+        default_options = ['ADn','MIMACD + Señal (Corto)', 'New Highs + New Lows']
         default_idx = group_names.index(default_options[i]) if i < len(default_options) else 0
         
         ind = st.selectbox(f"Panel {i+1}:", group_names, index=default_idx, key=f"ind_{i}")

@@ -17,7 +17,7 @@ st.set_page_config(page_title="Market Breadth Analyzer", layout="wide")
 with st.sidebar:
     st.title("⚙️ Configuración")
     st.markdown("### Selección de Índice")
-    ticker = st.selectbox("Mercado a analizar:", ["QQQ","SPY","^STOXX50E","XXSC.MI"], index=0)
+    ticker = st.selectbox("Mercado a analizar:", ["QQQ","SPY","^STOXX50E","XXSC.DE"], index=0)
     
     st.markdown("---")
     st.info("💡 *Los datos se cargan en caché. El primer cambio de ticker tardará unos segundos.*")
@@ -27,7 +27,7 @@ BLACKROCK_URLS = {
     'QQQ': 'https://www.blackrock.com/es/profesionales/productos/251896/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
     'SPY': 'https://www.blackrock.com/es/profesionales/productos/253743/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
     '^STOXX50E': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
-    'XXSC.MI':'https://www.blackrock.com/es/profesionales/productos/348766/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251022',
+    'XXSC.DE':'https://www.blackrock.com/es/profesionales/productos/348766/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251022',
     
 }
 

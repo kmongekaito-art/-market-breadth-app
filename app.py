@@ -17,7 +17,7 @@ st.set_page_config(page_title="Market Breadth Analyzer", layout="wide")
 with st.sidebar:
     st.title("⚙️ Configuración")
     st.markdown("### Selección de Índice")
-    ticker = st.selectbox("Mercado a analizar:", ["SPY", "QQQ","XESC.DE"], index=0)
+    ticker = st.selectbox("Mercado a analizar:", ["SPY", "QQQ","^STOXX50E"], index=0)
     
     st.markdown("---")
     st.info("💡 *Los datos se cargan en caché. El primer cambio de ticker tardará unos segundos.*")

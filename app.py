@@ -26,7 +26,7 @@ with st.sidebar:
 BLACKROCK_URLS = {
     'SPY': 'https://www.blackrock.com/es/profesionales/productos/253743/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
     'QQQ': 'https://www.blackrock.com/es/profesionales/productos/251896/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
-    'STOXX50E': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
+    '^STOXX50E': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
 }
 
 # ==========================================

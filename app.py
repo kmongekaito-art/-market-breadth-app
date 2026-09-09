@@ -17,19 +17,49 @@ st.set_page_config(page_title="Market Breadth Analyzer", layout="wide")
 with st.sidebar:
     st.title("⚙️ Configuración")
     st.markdown("### Selección de Índice")
-    ticker = st.selectbox("Mercado a analizar:", ["QQQ","SPY","^STOXX50E","XXSC.DE"], index=0)
-    
+    ticker = st.selectbox("Mercado a analizar:", ["^STOXX50E", "QQQ","SPY","XXSC.DE"], index=0)
     st.markdown("---")
     st.info("💡 *Los datos se cargan en caché. El primer cambio de ticker tardará unos segundos.*")
 
 # Diccionario de URLs de BlackRock según el ticker
 BLACKROCK_URLS = {
+    '^STOXX50E': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251022',
     'QQQ': 'https://www.blackrock.com/es/profesionales/productos/251896/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
     'SPY': 'https://www.blackrock.com/es/profesionales/productos/253743/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
-    '^STOXX50E': 'https://www.blackrock.com/es/profesionales/productos/251929/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251205',
-    'XXSC.DE':'https://www.blackrock.com/es/profesionales/productos/348766/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20251022',
-    
+    'XXSC.DE': 'https://www.blackrock.com/es/profesionales/productos/348766/fund/1497267045693.ajax?tab=all&fileType=json&asOfDate=20260907', # ⚠️ Nota: La fecha 2026 es futura, si falla, cámbiala a una fecha real reciente.
 }
+
+# Diccionario de mapeo de país a sufijo de Yahoo Finance (Unificado y ampliado)
+MAPEO_SUFIJOS = {
+    'ESTADOS UNIDOS': '', 'UNITED STATES': '', 'US': '',
+    'HOLANDA': '.AS', 'NETHERLANDS': '.AS',
+    'ESPAÑA': '.MC', 'ESPANA': '.MC', 'SPAIN': '.MC',
+    'FRANCIA': '.PA', 'FRANCE': '.PA',
+    'ITALIA': '.MI', 'ITALY': '.MI',
+    'ALEMANIA': '.DE', 'GERMANY': '.DE',
+    'SUIZA': '.SW', 'SWITZERLAND': '.SW',
+    'REINO UNIDO': '.L', 'UNITED KINGDOM': '.L',
+    'DINAMARCA': '.CO', 'DENMARK': '.CO',
+    'BELGICA': '.BR', 'BELGIUM': '.BR',
+    'PORTUGAL': '.LS',
+    'NORUEGA': '.OL', 'NORWAY': '.OL',
+    'AUSTRIA': '.VI',
+    'SUECIA': '.ST', 'SWEDEN': '.ST',
+    'FINLANDIA': '.HE', 'FINLAND': '.HE',
+    'GRECIA': '.AT', 'GREECE': '.AT',
+    'IRLANDA': '.IR', 'IRELAND': '.IR'
+}
+
+def agregar_sufijo(ticker, pais):
+    """Función robusta para asignar el sufijo correctamente según el país."""
+    ticker = str(ticker).strip()
+    if ticker.lower() in ['nan', 'none', '']:
+        return ''
+    pais = str(pais).upper().strip()
+    sufijo = MAPEO_SUFIJOS.get(pais, '')
+    if sufijo and not ticker.endswith(sufijo):
+        return f"{ticker}{sufijo}"
+    return ticker
 
 # ==========================================
 # PASO 2: DESCARGA DE DATOS (Ventana 2)
@@ -43,15 +73,46 @@ def load_market_data(ticker_selected):
     )
     if isinstance(stock.columns, pd.MultiIndex):
         stock.columns = stock.columns.get_level_values(0)
-
+        
     # 2. Descargar componentes desde BlackRock
     url = BLACKROCK_URLS[ticker_selected]
-    response = json.loads(requests.get(url).content.decode('utf-8-sig'))
-    tickers_list = [entry[0] for entry in response['aaData'] if entry[3] == 'Equity']
+    try:
+        response = json.loads(requests.get(url).content.decode('utf-8-sig'))
+        raw_data = response.get('aaData', [])
+    except Exception as e:
+        st.error(f"Error al conectar con la API de BlackRock: {e}")
+        st.stop()
+        
+    # Extraemos tickers y países (filtrando solo activos de tipo 'Equity')
+    raw_tickers = [entry[0] for entry in raw_data if len(entry) > 10 and entry[3] == 'Equity']
+    countries = [entry[10] for entry in raw_data if len(entry) > 10 and entry[3] == 'Equity']
     
+    # Aplicamos el sufijo según el país
+    tickers_list = [agregar_sufijo(t, c) for t, c in zip(raw_tickers, countries)]
+    tickers_list = [t for t in tickers_list if t] # Limpiamos posibles valores vacíos
+    
+    # 🛡️ COMPROBACIÓN CRÍTICA: Evitar el crash de yfinance si la lista está vacía
+    if not tickers_list:
+        st.error(f"⚠️ **No se han encontrado componentes (Equity) para {ticker_selected}.** "
+                 f"La API de BlackRock ha devuelto datos vacíos. "
+                 f"Por favor, verifica la URL y el parámetro `asOfDate` (actualmente es: `{url.split('asOfDate=')[-1]}`).")
+        st.stop()
+        
     # 3. Descargar cierres de los componentes
-    df_constituents = yf.download(tickers_list, start='2020-01-01', progress=False)['Close']
+    df_raw = yf.download(tickers_list, start='2020-01-01', progress=False)
     
+    # 🛡️ Comprobación por si Yahoo Finance no devuelve datos para los tickers extraídos
+    if df_raw.empty:
+        st.error(f"⚠️ **Yahoo Finance no ha devuelto datos para los componentes de {ticker_selected}.** "
+                 f"Revisa si los sufijos de los tickers son correctos o si Yahoo Finance ha bloqueado la petición.")
+        st.stop()
+        
+    # Manejo seguro de columnas MultiIndex de yfinance
+    if isinstance(df_raw.columns, pd.MultiIndex):
+        df_constituents = df_raw['Close']
+    else:
+        df_constituents = df_raw[['Close']]
+
     return stock, df_constituents
 
 # ==========================================
@@ -62,16 +123,14 @@ def calculate_indicators(df):
     # NHNL (New Highs / New Lows)
     df52wh = df.rolling(window=252).max()
     df52wl = df.rolling(window=252).min()
-    
     new_highs = (df == df52wh).sum(axis=1)
     new_lows = (df == df52wl).sum(axis=1)
     SPNHNLCLOSE = pd.DataFrame({'NewHigh': new_highs, 'NewLow': new_lows}, index=df.index)
-
+    
     # Advance / Decline y Osciladores
     returns = df.pct_change()[1:] * 100
     advances = (returns > 0).sum(axis=1)
     declines = (returns < 0).sum(axis=1)
-    
     SPADVDEC = pd.DataFrame({'Avance': advances, 'Descenso': declines}, index=returns.index)
     SPADVDEC['LIN'] = (SPADVDEC['Avance'] - SPADVDEC['Descenso']).cumsum()
     SPADVDEC['RATIO'] = (SPADVDEC['Avance'] - SPADVDEC['Descenso']) / (SPADVDEC['Avance'] + SPADVDEC['Descenso'])
@@ -89,14 +148,12 @@ def calculate_indicators(df):
     SPADVDEC['SUMM_SHORT'] = (SPADVDEC['Avance'] - SPADVDEC['Descenso']).ewm(span=19).mean()
     SPADVDEC['SUMM_LONG'] = (SPADVDEC['Avance'] - SPADVDEC['Descenso']).ewm(span=39).mean()
     SPADVDEC['SUMM'] = (SPADVDEC['SUMM_SHORT'] - SPADVDEC['SUMM_LONG']).cumsum()
-    
     SPADVDEC['AvanceEMA19'] = SPADVDEC['Avance'].ewm(span=19).mean()
     SPADVDEC['AvanceEMA39'] = SPADVDEC['Avance'].ewm(span=39).mean()
     SPADVDEC['McCellan'] = SPADVDEC['AvanceEMA19'] - SPADVDEC['AvanceEMA39']
-    
     SPADVDEC['longMIMACD'] = SPADVDEC['LIN'].ewm(span=12).mean() - SPADVDEC['LIN'].ewm(span=26).mean()
     SPADVDEC['longEMAMIMACD'] = SPADVDEC['longMIMACD'].ewm(span=9).mean()
-
+    
     return SPNHNLCLOSE, SPADVDEC
 
 # Ejecución de carga de datos
@@ -106,7 +163,6 @@ SPNHNLCLOSE, SPADVDEC = calculate_indicators(df_constituents)
 # ==========================================
 # PASO 4: INTERFAZ DE PANELES Y SELECTORES
 # ==========================================
-# NUEVA ESTRUCTURA: Grupos de indicadores que se dibujan juntos en el mismo panel
 INDICATOR_GROUPS = {
     'MIMACD + Señal (Corto)': [
         {'df': 'SPADVDEC', 'col': 'MIMACD', 'color': '#2962FF', 'name': 'MIMACD'},
@@ -135,22 +191,16 @@ INDICATOR_GROUPS = {
     ]
 }
 
-# Layout: Columna izquierda para el gráfico, derecha para controles
 col_chart, col_controls = st.columns([4, 1])
-
 with col_controls:
     st.subheader("Config. Gráfico")
     num_panels = st.selectbox("Nº de paneles inferiores:", [1, 2, 3], index=1)
-    
     group_names = list(INDICATOR_GROUPS.keys())
     
-    # Generar desplegables dinámicos según el número de paneles
     selected_indicators = []
     for i in range(num_panels):
-        # Asignamos defaults lógicos: Panel 1 -> MIMACD, Panel 2 -> NHNL, Panel 3 -> ADn
-        default_options = ['ADn','MIMACD + Señal (Corto)', 'New Highs + New Lows']
+        default_options = ['ADn','MIMACD + Señal (Corto)', 'New Highs + New Lows' ]
         default_idx = group_names.index(default_options[i]) if i < len(default_options) else 0
-        
         ind = st.selectbox(f"Panel {i+1}:", group_names, index=default_idx, key=f"ind_{i}")
         selected_indicators.append(ind)
 
@@ -158,47 +208,42 @@ with col_controls:
 # PASO 5: GRÁFICO DINÁMICO PLOTLY
 # ==========================================
 with col_chart:
-    # Calcular filas y alturas dinámicamente
     total_rows = 1 + num_panels
     row_heights = [0.6] + [0.4 / num_panels] * num_panels
-    
     specs = [[{"secondary_y": True}]] + [[{"secondary_y": False}]] * num_panels
-
+    
     fig = make_subplots(
         rows=total_rows, cols=1, shared_xaxes=True, 
         vertical_spacing=0.03, row_heights=row_heights, specs=specs
     )
-
+    
     # 1. Panel Principal (Velas)
     fig.add_trace(go.Candlestick(
         x=STOCK.index, open=STOCK['Open'], high=STOCK['High'], 
         low=STOCK['Low'], close=STOCK['Close'], name=ticker,
         increasing_line_color='#26A69A', decreasing_line_color='#EF5350'
     ), row=1, col=1)
-    
     fig.add_trace(go.Bar(
         x=STOCK.index, y=STOCK['Volume'], name='Volumen', opacity=0.2, marker_color='gray'
     ), row=1, col=1, secondary_y=True)
-
+    
     # 2. Paneles de Indicadores (Iterando sobre los GRUPOS)
     for i, group_name in enumerate(selected_indicators):
         row_num = i + 2
         traces_in_group = INDICATOR_GROUPS[group_name]
         
-        # Dibujar cada traza dentro del grupo en el mismo panel (row_num)
         for trace_info in traces_in_group:
             df_name = trace_info['df']
             col_name = trace_info['col']
             color = trace_info['color']
             name = trace_info['name']
-            
             data_source = SPADVDEC if df_name == 'SPADVDEC' else SPNHNLCLOSE
             
             fig.add_trace(go.Scatter(
                 x=data_source.index, y=data_source[col_name], 
                 line=dict(color=color, width=1.5), name=name
             ), row=row_num, col=1)
-
+            
     # 3. Layout general
     fig.update_layout(
         title=f"Análisis de Amplitud: {ticker}", 
@@ -211,12 +256,11 @@ with col_chart:
     fig.update_yaxes(title_text="Precio", secondary_y=False, row=1, col=1)
     fig.update_yaxes(title_text="Volumen", secondary_y=True, row=1, col=1, showgrid=False)
     
-    # Poner el nombre del grupo como título del eje Y
     for i in range(num_panels):
         fig.update_yaxes(title_text=selected_indicators[i], row=i+2, col=1)
         
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
-
+    
     # ==========================================
     # PASO 6: INYECCIÓN DE JAVASCRIPT (Estilo TradingView)
     # ==========================================
@@ -247,7 +291,6 @@ with col_chart:
     </script>
     """
     
-    # Renderizamos el HTML de Plotly y le añadimos nuestro script
     html_str = fig.to_html(
         include_plotlyjs=True, 
         config={
